@@ -20,7 +20,7 @@ from google.cloud import datastore
 from six.moves import range
 
 from .storage import Storage
-from .task import FAILED, FINISHED
+from .task import FAILED, FINISHED, QUEUED, RETRYING, STARTED
 from .utils import dumps, loads
 
 
@@ -33,15 +33,16 @@ class DatastoreStorage(Storage):
     the task is finished or failed. You can change the store_on_status property
     to change that, but be aware it will be slower.
     """
-    store_on_status = (FINISHED, FAILED)
+    store_on_status = (FINISHED, FAILED, QUEUED, RETRYING, STARTED)
 
-    def __init__(self, datastore):
+    def __init__(self, datastore, datastore_kind_name='task'):
         super(DatastoreStorage, self).__init__()
         self.datastore = datastore
+        self.datastore_kind_name = datastore_kind_name
 
     def _get_task_key(self, task_id):
         return self.datastore.key(
-            '{}-task'.format(DATASTORE_KIND_PREFIX), task_id)
+            '{}-{}'.format(DATASTORE_KIND_PREFIX, self.datastore_kind_name), task_id)
 
     def get_task(self, task_id):
         entity = self.datastore.get(self._get_task_key(task_id))
@@ -59,6 +60,7 @@ class DatastoreStorage(Storage):
 
         entity['data'] = dumps(task)
         entity['timestamp'] = datetime.utcnow()
+        entity['status'] = task.status
 
         self.datastore.put(entity)
 
@@ -67,14 +69,14 @@ class DatastoreStorage(Storage):
 
     def list_tasks(self):
         q = self.datastore.query(
-            kind='{}-task'.format(DATASTORE_KIND_PREFIX),
+            kind='{}-{}'.format(DATASTORE_KIND_PREFIX, self.datastore_kind_name),
             order=('-timestamp',))
 
         return q.fetch()
 
     def delete_tasks(self):
         q = self.datastore.query(
-            kind='{}-task'.format(DATASTORE_KIND_PREFIX),
+            kind='{}-{}'.format(DATASTORE_KIND_PREFIX, self.datastore_kind_name),
             order=('-timestamp',))
         q.keys_only()
 
